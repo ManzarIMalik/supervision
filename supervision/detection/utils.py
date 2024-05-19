@@ -297,6 +297,35 @@ def clip_boxes(xyxy: np.ndarray, resolution_wh: Tuple[int, int]) -> np.ndarray:
     return result
 
 
+def pad_boxes(xyxy: np.ndarray, px: int, py: Optional[int] = None) -> np.ndarray:
+    """
+    Pads bounding boxes coordinates with a constant padding.
+
+    Args:
+        xyxy (np.ndarray): A numpy array of shape `(N, 4)` where each
+            row corresponds to a bounding box in the format
+            `(x_min, y_min, x_max, y_max)`.
+        px (int): The padding value to be added to both the left and right sides of
+            each bounding box.
+        py (Optional[int]): The padding value to be added to both the top and bottom
+            sides of each bounding box. If not provided, `px` will be used for both
+            dimensions.
+
+    Returns:
+        np.ndarray: A numpy array of shape `(N, 4)` where each row corresponds to a
+            bounding box with coordinates padded according to the provided padding
+            values.
+    """
+    if py is None:
+        py = px
+
+    result = xyxy.copy()
+    result[:, [0, 1]] -= [px, py]
+    result[:, [2, 3]] += [px, py]
+
+    return result
+
+
 def xywh_to_xyxy(boxes_xywh: np.ndarray) -> np.ndarray:
     xyxy = boxes_xywh.copy()
     xyxy[:, 2] = boxes_xywh[:, 0] + boxes_xywh[:, 2]
@@ -500,7 +529,7 @@ def process_roboflow_result(
     np.ndarray,
     Optional[np.ndarray],
     Optional[np.ndarray],
-    Dict[str, List[np.ndarray]],
+    Dict[str, Union[List[np.ndarray], np.ndarray]],
 ]:
     if not roboflow_result["predictions"]:
         return (
@@ -590,6 +619,40 @@ def move_boxes(xyxy: np.ndarray, offset: np.ndarray) -> np.ndarray:
         ```
     """
     return xyxy + np.hstack([offset, offset])
+
+
+def move_masks(
+    masks: np.ndarray,
+    offset: np.ndarray,
+    resolution_wh: Tuple[int, int] = None,
+) -> np.ndarray:
+    """
+    Offset the masks in an array by the specified (x, y) amount.
+
+    Args:
+        masks (np.ndarray): A 3D array of binary masks corresponding to the predictions.
+            Shape: `(N, H, W)`, where N is the number of predictions, and H, W are the
+            dimensions of each mask.
+        offset (np.ndarray): An array of shape `(2,)` containing non-negative int values
+            `[dx, dy]`.
+        resolution_wh (Tuple[int, int]): The width and height of the desired mask
+            resolution.
+
+    Returns:
+        (np.ndarray) repositioned masks, optionally padded to the specified shape.
+    """
+
+    if offset[0] < 0 or offset[1] < 0:
+        raise ValueError(f"Offset values must be non-negative integers. Got: {offset}")
+
+    mask_array = np.full((masks.shape[0], resolution_wh[1], resolution_wh[0]), False)
+    mask_array[
+        :,
+        offset[1] : masks.shape[1] + offset[1],
+        offset[0] : masks.shape[2] + offset[0],
+    ] = masks
+
+    return mask_array
 
 
 def scale_boxes(xyxy: np.ndarray, factor: float) -> np.ndarray:
